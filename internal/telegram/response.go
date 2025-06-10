@@ -17,7 +17,8 @@ func (a *BotApp) SendFindings(ctx context.Context, tg *bot.Bot, chatID int64, fi
 	var sb strings.Builder
 	for _, f := range findings {
 		sb.WriteString(fmt.Sprintf(
-			"%s:%d [%s] %s\n",
+			"%s-%s:%d [%s] %s\n",
+			f.Branch,
 			f.File,
 			f.Line,
 			f.Severity.String(), // реализуйте метод String() для SeverityLevel
