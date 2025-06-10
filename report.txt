@@ -1,0 +1,17 @@
+Обнаружены возможные утечки:
+
+Возможный секрет в файле `/tmp/VKR-1779594620/.env`, строка 1:
+DB_PASSWORD=pass
+
+Возможный секрет в файле `/tmp/VKR-1779594620/docker-compose.yml`, строка 14:
+      - POSTGRES_PASSWORD=pass
+
+Возможный секрет в файле `/tmp/VKR-1779594620/internal/service/auth.go`, строка 34:
+	user.Password = GeneratePasswordHash(user.Password)
+
+Возможный секрет в файле `/tmp/VKR-1779594620/internal/usecase/parsing.go`, строка 228:
+//fdadb97c464eb562e75eaac559cf8734ca3bedf94f
+
+Возможный секрет в файле `/tmp/VKR-1779594620/pkg/pgsql/collector.go`, строка 113:
+			"pgxpool_max_lifetime_destroy_count",
+
