@@ -2,69 +2,14 @@ package analyzers
 
 import (
 	"bufio"
-	"fmt"
 	"os"
 	"path/filepath"
-	"regexp"
 	"strings"
+	v1 "vuln-scanner/internal/entity"
+	utils "vuln-scanner/utils/util"
 
 	"github.com/rs/zerolog/log"
 )
-
-var (
-	secretPatterns = []*regexp.Regexp{
-		regexp.MustCompile(`(?i)password\s*[:=]\s*["']?[\w\-!@#$%^&*()_+=]{4,}["']?`),
-		regexp.MustCompile(`(?i)secret\s*[:=]\s*["']?[\w\-!@#$%^&*()_+=]{4,}["']?`),
-		regexp.MustCompile(`(?i)api[_-]?key\s*[:=]\s*["']?[A-Za-z0-9_\-]{10,}["']?`),
-		regexp.MustCompile(`(?i)token\s*[:=]\s*["']?[A-Za-z0-9\.\-_]{10,}["']?`),
-		regexp.MustCompile(`(?i)Authorization\s*[:=]\s*["']?Bearer\s+[A-Za-z0-9\.\-_]{10,}["']?`),
-		regexp.MustCompile(`(?i)[a-zA-Z0-9_\-]{32,}`),
-		regexp.MustCompile(`AKIA[0-9A-Z]{16}`),    // AWS Access Key
-		regexp.MustCompile(`ghp_[A-Za-z0-9]{36}`), // GitHub token
-	}
-
-	reConstant      = regexp.MustCompile(`^[A-Z0-9_]+$`)
-	reFuncSignature = regexp.MustCompile(`^\s*func\s`)    // сигнатуры функций
-	reMethodCall    = regexp.MustCompile(`\w+\.\w+\s*\(`) // вызовы методов
-)
-
-var supportedExtensions = []string{
-	".go", ".py", ".js", ".ts", ".java", ".c", ".cpp", ".h", ".hpp", ".php", ".sh",
-	".env", ".yml", ".yaml", ".json",
-}
-
-func hasIgnoredExtension(path string) bool {
-	for _, ext := range supportedExtensions {
-		if strings.HasSuffix(path, ext) {
-			return true
-		}
-	}
-	return false
-}
-
-var ignoredFilenames = []string{
-	"go.mod", "go.sum",
-	"requirements.txt", "Pipfile", "Pipfile.lock",
-	"package.json", "package-lock.json", "yarn.lock",
-	"pom.xml", "build.gradle", "build.gradle.kts",
-	"composer.lock", "composer.json",
-}
-
-func isIgnoredFilename(filename string) bool {
-	for _, ignored := range ignoredFilenames {
-		if strings.EqualFold(filepath.Base(filename), ignored) {
-			return true
-		}
-	}
-	return false
-}
-
-func isTestOrMock(path string) bool {
-	lower := strings.ToLower(path)
-	return strings.Contains(lower, "mock") ||
-		strings.Contains(lower, "test") ||
-		strings.HasSuffix(lower, "_test.go")
-}
 
 type SecretsAnalyzer struct{}
 
@@ -75,8 +20,8 @@ func (s *SecretsAnalyzer) Name() string {
 	return "Поиск секретов"
 }
 
-func (s *SecretsAnalyzer) Run(repoName, path string) (string, error) {
-	var findings []string
+func (s *SecretsAnalyzer) Run(repoName, path, branch string) ([]v1.Finding, error) {
+	var findings []v1.Finding
 
 	log.Info().Msgf("[%v] walk for secret leaks started", repoName)
 	err := filepath.Walk(path, func(file string, info os.FileInfo, err error) error {
@@ -107,24 +52,39 @@ func (s *SecretsAnalyzer) Run(repoName, path string) (string, error) {
 			if strings.Contains(line, "Access-Control-Allow-Credentials") {
 				continue
 			}
+
 			// 2) Пропустить сигнатуры функций
-			if reFuncSignature.MatchString(line) {
-				continue
-			}
-			// 3) Пропустить простые вызовы методов/функций
-			if reMethodCall.MatchString(line) {
+			if v1.ReFuncSignature.MatchString(line) {
 				continue
 			}
 
-			for _, pattern := range secretPatterns {
+			// 3) Пропустить простые вызовы методов/функций
+			if v1.ReMethodCall.MatchString(line) {
+				continue
+			}
+
+			for _, pattern := range v1.SecretPatterns {
 				matches := pattern.FindAllString(line, -1)
 				for _, match := range matches {
 					cleaned := strings.Trim(match, `"' `)
-					if reConstant.MatchString(cleaned) {
+					if v1.ReConstant.MatchString(cleaned) {
 						continue
 					}
 
-					findings = append(findings, fmt.Sprintf("Возможный секрет в файле `%s`, строка %d:\n%s\n", file, lineNum, line))
+					sev := s.Classify(cleaned)
+
+					if strings.HasSuffix(strings.ToLower(file), ".env") {
+						sev = v1.SevHigh
+					}
+
+					findings = append(findings, v1.Finding{
+						Branch:   branch,
+						File:     file,
+						Line:     lineNum,
+						Content:  strings.TrimSpace(line),
+						Severity: sev,
+					})
+
 					// после первого валидного совпадения в строке — выходим к следующей строке
 					break
 				}
@@ -133,26 +93,53 @@ func (s *SecretsAnalyzer) Run(repoName, path string) (string, error) {
 
 		return nil
 	})
+	if err != nil {
+		return nil, err
+	}
 
 	log.Info().Msgf("[%v] walk for secret leaks ended", repoName)
 
-	if err != nil {
-		return "", err
-	}
-
-	log.Info().Msgf("[%v] number of findings = %d", repoName, len(findings))
-	if len(findings) == 0 {
-		return "Секреты не найдены", nil
-	}
-
-	return "Обнаружены возможные утечки:\n\n" + joinFindings(findings), nil
+	return findings, nil
 }
 
-func joinFindings(findings []string) string {
-	result := ""
-	for _, f := range findings {
-		result += f + "\n"
+func (s *SecretsAnalyzer) Classify(match string) v1.SeverityLevel {
+	switch {
+	case v1.ReAWSKey.MatchString(match), v1.ReGHToken.MatchString(match):
+		return v1.SevHigh
 	}
 
-	return result
+	e := utils.GetGeneratedProbability(match)
+	switch {
+	case e >= 0.75:
+		return v1.SevHigh
+	case e >= 0.5:
+		return v1.SevMedium
+	default:
+		return v1.SevLow
+	}
+}
+
+func hasIgnoredExtension(path string) bool {
+	for _, ext := range v1.SupportedExtensions {
+		if strings.HasSuffix(path, ext) {
+			return true
+		}
+	}
+	return false
+}
+
+func isIgnoredFilename(filename string) bool {
+	for _, ignored := range v1.IgnoredFilenames {
+		if strings.EqualFold(filepath.Base(filename), ignored) {
+			return true
+		}
+	}
+	return false
+}
+
+func isTestOrMock(path string) bool {
+	lower := strings.ToLower(path)
+	return strings.Contains(lower, "mock") ||
+		strings.Contains(lower, "test") ||
+		strings.HasSuffix(lower, "_test.go")
 }

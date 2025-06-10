@@ -2,6 +2,7 @@ package telegram
 
 import (
 	"context"
+	"fmt"
 	"regexp"
 	"vuln-scanner/internal/analyzers"
 
@@ -20,6 +21,7 @@ var gitRepoRegex = regexp.MustCompile(`(?i)https://(www\.)?github\.com/[\w.-]+/[
 func (a *BotApp) handleRepoLink(ctx context.Context, b *bot.Bot, update *models.Update) {
 	msg := update.Message
 	text := msg.Text
+	chatID := msg.Chat.ID
 
 	if !gitRepoRegex.MatchString(text) {
 		log.Error().Msg("Something wrong")
@@ -27,22 +29,26 @@ func (a *BotApp) handleRepoLink(ctx context.Context, b *bot.Bot, update *models.
 	}
 
 	b.SendMessage(ctx, &bot.SendMessageParams{
-		ChatID: msg.Chat.ID,
+		ChatID: chatID,
 		Text:   "Ссылка получена. Начинаю анализ...",
 	})
 
-	str, err := analyzers.AnalyzeRepo(ctx, text)
+	findings, err := analyzers.AnalyzeRepo(ctx, text)
 	if err != nil {
 		log.Error().Msgf("analyze reporsitory error: %v", err)
+		b.SendMessage(ctx, &bot.SendMessageParams{
+			ChatID: chatID,
+			Text:   fmt.Sprintf("Ошибка при анализе: %v", err),
+		})
+		return
 	}
 
-	err = a.SendAsFile(ctx, b, msg.Chat.ID, str)
-	if err != nil {
-		log.Error().Msgf("file sending error: %v", err)
+	if len(findings) == 0 {
+		b.SendMessage(ctx, &bot.SendMessageParams{
+			ChatID: chatID,
+			Text:   "Уязвимости не обнаружены.",
+		})
+		return
 	}
-
-	b.SendMessage(ctx, &bot.SendMessageParams{
-		ChatID: msg.Chat.ID,
-		Text:   str,
-	})
+	a.SendFindings(ctx, b, chatID, findings)
 }
