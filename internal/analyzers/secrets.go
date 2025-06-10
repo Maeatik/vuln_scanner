@@ -11,16 +11,22 @@ import (
 	"github.com/rs/zerolog/log"
 )
 
-var secretPatterns = []*regexp.Regexp{
-	regexp.MustCompile(`(?i)password\s*[:=]\s*["']?[\w\-!@#$%^&*()_+=]{4,}["']?`),
-	regexp.MustCompile(`(?i)secret\s*[:=]\s*["']?[\w\-!@#$%^&*()_+=]{4,}["']?`),
-	regexp.MustCompile(`(?i)api[_-]?key\s*[:=]\s*["']?[A-Za-z0-9_\-]{10,}["']?`),
-	regexp.MustCompile(`(?i)token\s*[:=]\s*["']?[A-Za-z0-9\.\-_]{10,}["']?`),
-	regexp.MustCompile(`(?i)Authorization\s*[:=]\s*["']?Bearer\s+[A-Za-z0-9\.\-_]{10,}["']?`),
-	regexp.MustCompile(`(?i)[a-zA-Z0-9_\-]{32,}`),
-	regexp.MustCompile(`AKIA[0-9A-Z]{16}`),    // AWS Access Key
-	regexp.MustCompile(`ghp_[A-Za-z0-9]{36}`), // GitHub token
-}
+var (
+	secretPatterns = []*regexp.Regexp{
+		regexp.MustCompile(`(?i)password\s*[:=]\s*["']?[\w\-!@#$%^&*()_+=]{4,}["']?`),
+		regexp.MustCompile(`(?i)secret\s*[:=]\s*["']?[\w\-!@#$%^&*()_+=]{4,}["']?`),
+		regexp.MustCompile(`(?i)api[_-]?key\s*[:=]\s*["']?[A-Za-z0-9_\-]{10,}["']?`),
+		regexp.MustCompile(`(?i)token\s*[:=]\s*["']?[A-Za-z0-9\.\-_]{10,}["']?`),
+		regexp.MustCompile(`(?i)Authorization\s*[:=]\s*["']?Bearer\s+[A-Za-z0-9\.\-_]{10,}["']?`),
+		regexp.MustCompile(`(?i)[a-zA-Z0-9_\-]{32,}`),
+		regexp.MustCompile(`AKIA[0-9A-Z]{16}`),    // AWS Access Key
+		regexp.MustCompile(`ghp_[A-Za-z0-9]{36}`), // GitHub token
+	}
+
+	reConstant      = regexp.MustCompile(`^[A-Z0-9_]+$`)
+	reFuncSignature = regexp.MustCompile(`^\s*func\s`)    // сигнатуры функций
+	reMethodCall    = regexp.MustCompile(`\w+\.\w+\s*\(`) // вызовы методов
+)
 
 var supportedExtensions = []string{
 	".go", ".py", ".js", ".ts", ".java", ".c", ".cpp", ".h", ".hpp", ".php", ".sh",
@@ -97,11 +103,30 @@ func (s *SecretsAnalyzer) Run(repoName, path string) (string, error) {
 		for scanner.Scan() {
 			lineNum++
 			line := scanner.Text()
+
+			if strings.Contains(line, "Access-Control-Allow-Credentials") {
+				continue
+			}
+			// 2) Пропустить сигнатуры функций
+			if reFuncSignature.MatchString(line) {
+				continue
+			}
+			// 3) Пропустить простые вызовы методов/функций
+			if reMethodCall.MatchString(line) {
+				continue
+			}
+
 			for _, pattern := range secretPatterns {
-				if pattern.MatchString(line) {
-					findings = append(findings,
-						fmt.Sprintf("Возможный секрет в файле `%s`, строка %d:\n%s\n",
-							file, lineNum, line))
+				matches := pattern.FindAllString(line, -1)
+				for _, match := range matches {
+					cleaned := strings.Trim(match, `"' `)
+					if reConstant.MatchString(cleaned) {
+						continue
+					}
+
+					findings = append(findings, fmt.Sprintf("Возможный секрет в файле `%s`, строка %d:\n%s\n", file, lineNum, line))
+					// после первого валидного совпадения в строке — выходим к следующей строке
+					break
 				}
 			}
 		}

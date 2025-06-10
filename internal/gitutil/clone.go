@@ -15,7 +15,8 @@ func Clone(repoURL string) (string, error) {
 		return "", fmt.Errorf("не удалось создать временную директорию: %w", err)
 	}
 
-	cmd := exec.Command("git", "clone", "--depth=1", repoURL, dir)
+	cmd := exec.Command("git", "clone", "--quiet", repoURL, dir)
+
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 
@@ -24,9 +25,4 @@ func Clone(repoURL string) (string, error) {
 	}
 
 	return dir, nil
-}
-
-func CloneRepo(repoURL, dest string) error {
-	cmd := exec.Command("git", "clone", "--quiet", repoURL, dest)
-	return cmd.Run()
 }
