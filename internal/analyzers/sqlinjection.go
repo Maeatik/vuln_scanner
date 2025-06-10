@@ -25,8 +25,14 @@ func (s *SQLInjectionAnalyzer) Run(repoName, repoPath, branch string) ([]v1.Find
 		if err != nil || info.IsDir() {
 			return nil
 		}
-		// Анализируем только Go-файлы, пропускаем тесты/моки
-		if !strings.HasSuffix(file, ".go") || isTestOrMock(file) {
+
+		ext := strings.ToLower(filepath.Ext(file))
+		patterns, ok := v1.SqlPatternsByExt[ext]
+		if !ok {
+			return nil // этот язык не поддерживаем
+		}
+
+		if isTestOrMock(file) {
 			return nil
 		}
 
@@ -38,18 +44,19 @@ func (s *SQLInjectionAnalyzer) Run(repoName, repoPath, branch string) ([]v1.Find
 
 		scanner := bufio.NewScanner(f)
 		lineNum := 0
+
 		for scanner.Scan() {
 			lineNum++
 			line := scanner.Text()
 
-			for _, pat := range v1.SqlPatterns {
+			for _, pat := range patterns {
 				if pat.MatchString(line) {
 					findings = append(findings, v1.Finding{
 						Branch:   branch,
 						File:     file,
 						Line:     lineNum,
 						Content:  strings.TrimSpace(line),
-						Severity: v1.SevHigh, // SQL-инъекция всегда High
+						Severity: s.Classify(""),
 					})
 					// переходим к следующей строке
 					break
