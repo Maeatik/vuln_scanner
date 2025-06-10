@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"strings"
+	v1 "vuln-scanner/internal/entity"
 	"vuln-scanner/internal/gitutil"
 	utils "vuln-scanner/utils/util"
 
@@ -13,52 +13,41 @@ import (
 
 var analyzes []Analyzer = []Analyzer{
 	NewSecretsAnalyzer(),
+	NewSQLInjectionAnalyzer(),
 }
 
-func AnalyzeRepo(ctx context.Context, repoURL string) (string, error) {
+func AnalyzeRepo(ctx context.Context, repoURL string) ([]v1.Finding, error) {
 	dir, err := gitutil.Clone(repoURL)
 	if err != nil {
-		return "", fmt.Errorf("не удалось клонировать репозиторий: %v", err)
+		return nil, fmt.Errorf("не удалось клонировать репозиторий: %v", err)
 	}
 	defer os.RemoveAll(dir)
 
 	repoName := utils.ExtractRepoName(repoURL)
-
 	branches, err := gitutil.GetBranches(dir)
 	if err != nil {
-		return "", fmt.Errorf("не удалось получить список веток: %w", err)
+		return nil, fmt.Errorf("не удалось получить список веток: %w", err)
 	}
 
-	var fullReport strings.Builder
-	fullReport.WriteString(fmt.Sprintf("Анализ репозитория `%s` по всем веткам:\n\n", repoName))
-
+	var allFindings []v1.Finding
 	for _, branch := range branches {
-		// Переключаемся на ветку
 		if err := gitutil.CheckoutBranch(dir, branch); err != nil {
-			log.Warn().Msgf("не удалось чек-аутить ветку %s: %v", branch, err)
+			log.Warn().Msgf("checkout %v failed: %v", branch, err)
 			continue
 		}
 
-		fullReport.WriteString(fmt.Sprintf("Ветка `%s`:\n", branch))
-
 		for _, analyzer := range analyzes {
-			log.Info().Msgf("запуск %q на ветке %s", analyzer.Name(), branch)
-			res, err := analyzer.Run(repoName, dir)
+			log.Info().Msgf("running %v on %v@%v", analyzer.Name(), repoName, branch)
+
+			finds, err := analyzer.Run(repoName, dir, branch)
 			if err != nil {
-				fullReport.WriteString(fmt.Sprintf("%s: ошибка: %v\n\n", analyzer.Name(), err))
+				log.Error().Err(err).Msgf("analyzer %v error", analyzer.Name())
 				continue
 			}
-			// Добавляем результат конкретного анализатора
-			fullReport.WriteString(res + "\n")
+
+			allFindings = append(allFindings, finds...)
 		}
-		fullReport.WriteString("\n")
 	}
 
-	report := fullReport.String()
-	if strings.TrimSpace(report) == fmt.Sprintf("🔍 Анализ репозитория `%s` по всем веткам:", repoName) {
-		// ничего не нашлось кроме заголовка
-		return "Секретов не найдено ни в одной ветке", nil
-	}
-
-	return report, nil
+	return allFindings, nil
 }
