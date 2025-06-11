@@ -33,7 +33,7 @@ func (a *BotApp) handleRepoLink(ctx context.Context, b *bot.Bot, update *models.
 		Text:   "Ссылка получена. Начинаю анализ...",
 	})
 
-	findings, err := analyzers.AnalyzeRepo(ctx, text)
+	resp, err := analyzers.AnalyzeRepo(ctx, text)
 	if err != nil {
 		log.Error().Msgf("analyze reporsitory error: %v", err)
 		b.SendMessage(ctx, &bot.SendMessageParams{
@@ -43,12 +43,12 @@ func (a *BotApp) handleRepoLink(ctx context.Context, b *bot.Bot, update *models.
 		return
 	}
 
-	if len(findings) == 0 {
+	if len(resp.Findings) == 0 {
 		b.SendMessage(ctx, &bot.SendMessageParams{
 			ChatID: chatID,
 			Text:   "Уязвимости не обнаружены.",
 		})
 		return
 	}
-	a.SendFindings(ctx, b, chatID, findings)
+	a.SendFindings(ctx, b, chatID, resp)
 }

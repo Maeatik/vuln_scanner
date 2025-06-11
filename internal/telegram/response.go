@@ -3,49 +3,49 @@ package telegram
 import (
 	"bytes"
 	"context"
-	"fmt"
+	"html/template"
 	"os"
-	"strings"
+	"path/filepath"
 	v1 "vuln-scanner/internal/entity"
 
 	"github.com/go-telegram/bot"
 	"github.com/go-telegram/bot/models"
 )
 
-func (a *BotApp) SendFindings(ctx context.Context, tg *bot.Bot, chatID int64, findings []v1.Finding) {
-	// Форматируем вывод
-	var sb strings.Builder
-	for _, f := range findings {
-		sb.WriteString(fmt.Sprintf(
-			"%s-%s:%d [%s]EPSS=%v, %s\n",
-			f.Branch,
-			f.File,
-			f.Line,
-			f.Severity.String(), // реализуйте метод String() для SeverityLevel
-			f.EPSS,
-			f.Content,
-		))
+func (a *BotApp) SendFindings(ctx context.Context, tg *bot.Bot, chatID int64, data v1.AnalyzeResponse) error {
+	// Парсим шаблон и добавляем возможность вызова метода Format на ScanDate
+	tpl, err := template.New("report").
+		Funcs(template.FuncMap{"Format": func(t interface{}, layout string) string {
+			// t — ожидается time.Time
+			return t.(interface {
+				Format(string) string
+			}).Format(layout)
+		}}).
+		Parse(v1.TplHTML)
+	if err != nil {
+		return err
 	}
 
-	// Если длина sb > 4000 символов, можно разбить или отправить как файл
-	result := sb.String()
-	if len(result) > 10 {
-		// отправляем как файл
-		filename := "report.txt"
-		os.WriteFile(filename, []byte(result), 0644)
-		defer os.Remove(filename)
-
-		tg.SendDocument(ctx, &bot.SendDocumentParams{
-			ChatID: chatID,
-			// Document: tg.FromDisk(filename),
-			Document: &models.InputFileUpload{Filename: filename, Data: bytes.NewReader([]byte(result))},
-
-			Caption: "Report",
-		})
-	} else {
-		tg.SendMessage(ctx, &bot.SendMessageParams{
-			ChatID: chatID,
-			Text:   result,
-		})
+	// Рендерим весь AnalyzeResponse, чтобы в шаблоне были доступны .RepositoryName, .AuthorName, .ScanDate и .Findings
+	var buf bytes.Buffer
+	if err := tpl.Execute(&buf, data); err != nil {
+		return err
 	}
+
+	htmlBytes := buf.Bytes()
+	filename := "report.html"
+	if err := os.WriteFile(filename, htmlBytes, 0644); err != nil {
+		return err
+	}
+	defer os.Remove(filename)
+
+	_, err = tg.SendDocument(ctx, &bot.SendDocumentParams{
+		ChatID: chatID,
+		Document: &models.InputFileUpload{
+			Filename: filepath.Base(filename),
+			Data:     bytes.NewReader(htmlBytes),
+		},
+		Caption: "Отчёт по уязвимостям (HTML)",
+	})
+	return err
 }

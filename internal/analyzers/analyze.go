@@ -6,6 +6,7 @@ import (
 	"os"
 	"runtime"
 	"sync"
+	"time"
 	v1 "vuln-scanner/internal/entity"
 	"vuln-scanner/internal/gitutil"
 	utils "vuln-scanner/utils/util"
@@ -26,18 +27,18 @@ var analyzes = []Analyzer{
 	NewDDoSAnalyzer(),
 }
 
-func AnalyzeRepo(ctx context.Context, repoURL string) ([]v1.Finding, error) {
+func AnalyzeRepo(ctx context.Context, repoURL string) (v1.AnalyzeResponse, error) {
 	// Получаем список веток единожды
 	tmpDir, err := gitutil.Clone(repoURL)
 	if err != nil {
-		return nil, fmt.Errorf("не удалось клонировать репозиторий для списка веток: %v", err)
+		return v1.AnalyzeResponse{}, fmt.Errorf("не удалось клонировать репозиторий для списка веток: %v", err)
 	}
 	// удалим этот временный клон после получения веток
 	defer os.RemoveAll(tmpDir)
 
 	branches, err := gitutil.GetBranches(tmpDir)
 	if err != nil {
-		return nil, fmt.Errorf("не удалось получить список веток: %w", err)
+		return v1.AnalyzeResponse{}, fmt.Errorf("не удалось получить список веток: %w", err)
 	}
 
 	// Каналы для заданий и результатов
@@ -110,5 +111,10 @@ func AnalyzeRepo(ctx context.Context, repoURL string) ([]v1.Finding, error) {
 		allFindings = append(allFindings, f...)
 	}
 
-	return allFindings, nil
+	return v1.AnalyzeResponse{
+		RepositoryName: utils.ExtractRepoName(repoURL),
+		AuthorName:     utils.ExtractUserName(repoURL),
+		ScanDate:       time.Now(),
+		Findings:       allFindings,
+	}, nil
 }
