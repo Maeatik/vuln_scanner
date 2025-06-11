@@ -6,6 +6,7 @@ require (
 	github.com/go-chassis/go-archaius v1.5.6
 	github.com/go-telegram/bot v1.15.0
 	github.com/rs/zerolog v1.34.0
+	golang.org/x/sync v0.0.0-20210220032951-036812b2e83c
 )
 
 require (

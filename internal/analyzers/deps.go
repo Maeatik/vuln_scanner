@@ -3,6 +3,7 @@ package analyzers
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"encoding/json"
 	"encoding/xml"
 	"fmt"
@@ -11,10 +12,12 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 	v1 "vuln-scanner/internal/entity"
 	"vuln-scanner/utils/dependencies"
 
 	"github.com/rs/zerolog/log"
+	"golang.org/x/sync/errgroup"
 )
 
 type DepsAnalyzer struct{}
@@ -33,45 +36,76 @@ func (a *DepsAnalyzer) Run(repoName, repoPath, branch string) ([]v1.Finding, err
 		return nil, err
 	}
 
-	// 2) Для каждой зависимости делаем запрос в OSV API
-	var findings []v1.Finding
+	// общий слайс и мьютекс для результатов
+	var (
+		mu       sync.Mutex
+		findings []v1.Finding
+	)
+
+	// errgroup с контекстом для отмены в случае ошибки
+	eg, _ := errgroup.WithContext(context.Background())
+
+	// семафор, чтобы не делать сотни одновременных запросов
+	const maxConcurrent = 5
+	sem := make(chan struct{}, maxConcurrent)
+
 	for _, dep := range deps {
-		log.Info().Msgf("now scanning %v@%v", dep.Name, dep.Version)
-		vuls, err := dependencies.QueryOSV(dep.Name, dep.Version)
-		if err != nil {
-			return nil, err
-		}
-		for _, v := range vuls.Vulns {
-			var cve string
-			for _, al := range v.Aliases {
-				if strings.HasPrefix(al, "CVE-") {
-					cve = al
-					break
-				}
-			}
-
-			epssScore, err := dependencies.FetchEPSS(cve)
+		dep := dep // захват локальной копии
+		eg.Go(func() error {
+			// запрос в OSV
+			sem <- struct{}{} // захват семафора
+			vuls, err := dependencies.QueryOSV(dep.Name, dep.Version)
+			<-sem // освобождение семафора
 			if err != nil {
-				log.Info().Msgf("failed to get epss: %v", err)
+				return fmt.Errorf("OSV query %s@%s: %w", dep.Name, dep.Version, err)
 			}
 
-			log.Info().Msgf("name=%v, score=%v", dep.Name, epssScore)
-			fmt.Println(epssScore)
+			// для каждого найденного уязвимого совпадения опрашиваем EPSS и формируем Finding
+			for _, v := range vuls.Vulns {
+				// выбрать первую CVE-алиасу
+				var cve string
+				for _, al := range v.Aliases {
+					if strings.HasPrefix(al, "CVE-") {
+						cve = al
+						break
+					}
+				}
 
-			osv := dependencies.MapOSVSeverity(v)
-			epss := dependencies.MapEPSS(epssScore)
+				// можно сделать ещё один ограниченный параллелизм для FetchEPSS,
+				// но здесь оставим последовательным
+				epssScore, err := dependencies.FetchEPSS(cve)
+				if err != nil {
+					// не фатально — логируем и идём дальше
+					log.Info().Msgf("failed to get EPSS for %s: %v", cve, err)
+				}
 
-			findings = append(findings, v1.Finding{
-				Branch:   branch,
-				File:     dep.File,
-				Line:     dep.Line,
-				Content:  fmt.Sprintf("%s@%s — %s: %s", dep.Name, dep.Version, v.ID, v.Summary),
-				Severity: a.Classify(epss, osv),
-				Details:  v.Details,
-				EPSS:     epssScore,
-			})
-		}
+				osv := dependencies.MapOSVSeverity(v)
+				epss := dependencies.MapEPSS(epssScore)
+
+				f := v1.Finding{
+					Branch:   branch,
+					File:     dep.File,
+					Line:     dep.Line,
+					Content:  fmt.Sprintf("%s@%s — %s: %s", dep.Name, dep.Version, v.ID, v.Summary),
+					Severity: a.Classify(epss, osv),
+					Details:  v.Details,
+					EPSS:     epssScore,
+				}
+
+				mu.Lock()
+				findings = append(findings, f)
+				mu.Unlock()
+			}
+
+			return nil
+		})
 	}
+
+	// ждём завершения всех горутин
+	if err := eg.Wait(); err != nil {
+		return nil, err
+	}
+
 	return findings, nil
 }
 
