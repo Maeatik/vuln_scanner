@@ -5,9 +5,14 @@ import (
 	"os"
 	"os/exec"
 	utils "vuln-scanner/utils/util"
+
+	"github.com/rs/zerolog/log"
 )
 
 func Clone(repoURL string) (string, error) {
+	log.Info().Msgf("start clone repository: %v", repoURL)
+	defer log.Info().Msgf("end clone repository: %v", repoURL)
+
 	repoName := utils.ExtractRepoName(repoURL)
 
 	dir, err := os.MkdirTemp("", repoName+"-*")

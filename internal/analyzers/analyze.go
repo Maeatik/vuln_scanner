@@ -4,14 +4,21 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"runtime"
+	"sync"
 	v1 "vuln-scanner/internal/entity"
 	"vuln-scanner/internal/gitutil"
 	utils "vuln-scanner/utils/util"
-
-	"github.com/rs/zerolog/log"
 )
 
-var analyzes []Analyzer = []Analyzer{
+type job struct {
+	repoURL  string
+	branch   string
+	analyzer Analyzer
+}
+
+// ваш слайс анализаторов
+var analyzes = []Analyzer{
 	NewSecretsAnalyzer(),
 	NewSQLInjectionAnalyzer(),
 	NewDepsAnalyzer(),
@@ -20,36 +27,87 @@ var analyzes []Analyzer = []Analyzer{
 }
 
 func AnalyzeRepo(ctx context.Context, repoURL string) ([]v1.Finding, error) {
-	dir, err := gitutil.Clone(repoURL)
+	// Получаем список веток единожды
+	tmpDir, err := gitutil.Clone(repoURL)
 	if err != nil {
-		return nil, fmt.Errorf("не удалось клонировать репозиторий: %v", err)
+		return nil, fmt.Errorf("не удалось клонировать репозиторий для списка веток: %v", err)
 	}
-	defer os.RemoveAll(dir)
+	// удалим этот временный клон после получения веток
+	defer os.RemoveAll(tmpDir)
 
-	repoName := utils.ExtractRepoName(repoURL)
-	branches, err := gitutil.GetBranches(dir)
+	branches, err := gitutil.GetBranches(tmpDir)
 	if err != nil {
 		return nil, fmt.Errorf("не удалось получить список веток: %w", err)
 	}
 
-	var allFindings []v1.Finding
-	for _, branch := range branches {
-		if err := gitutil.CheckoutBranch(dir, branch); err != nil {
-			log.Warn().Msgf("checkout %v failed: %v", branch, err)
-			continue
-		}
+	// Каналы для заданий и результатов
+	jobs := make(chan job)
+	results := make(chan []v1.Finding)
 
-		for _, analyzer := range analyzes {
-			log.Info().Msgf("running %v on %v@%v", analyzer.Name(), repoName, branch)
+	// Пул воркеров
+	numWorkers := runtime.NumCPU()
+	var wg sync.WaitGroup
+	for i := 0; i < numWorkers; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for j := range jobs {
+				select {
+				case <-ctx.Done():
+					return
+				default:
+				}
 
-			finds, err := analyzer.Run(repoName, dir, branch)
-			if err != nil {
-				log.Error().Err(err).Msgf("analyzer %v error", analyzer.Name())
-				continue
+				// Для каждой задачи заново клонируем репозиторий
+				dir, err := gitutil.Clone(j.repoURL)
+				if err != nil {
+					// неудача клона — пропускаем
+					continue
+				}
+				// cleanup
+				defer os.RemoveAll(dir)
+
+				// переключаем ветку
+				if err := gitutil.CheckoutBranch(dir, j.branch); err != nil {
+					continue
+				}
+
+				// запускаем анализатор
+				finds, err := j.analyzer.Run(utils.ExtractRepoName(j.repoURL), dir, j.branch)
+				if err != nil {
+					continue
+				}
+
+				// отправляем найденное
+				select {
+				case results <- finds:
+				case <-ctx.Done():
+					return
+				}
 			}
+		}()
+	}
 
-			allFindings = append(allFindings, finds...)
+	// Диспетчер: кладёт в канал все (ветка, анализатор)
+	go func() {
+		for _, branch := range branches {
+			for _, analyzer := range analyzes {
+				jobs <- job{repoURL: repoURL, branch: branch, analyzer: analyzer}
+			}
 		}
+		close(jobs)
+	}()
+
+	// Закроем results после завершения всех воркеров
+	go func() {
+		wg.Wait()
+		close(results)
+	}()
+
+	// Собираем всё из results
+	var allFindings []v1.Finding
+	for f := range results {
+		allFindings = append(allFindings, f...)
 	}
 
 	return allFindings, nil

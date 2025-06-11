@@ -70,7 +70,6 @@ func (a *DepsAnalyzer) Run(repoName, repoPath, branch string) ([]v1.Finding, err
 				Details:  v.Details,
 				EPSS:     epssScore,
 			})
-
 		}
 	}
 	return findings, nil

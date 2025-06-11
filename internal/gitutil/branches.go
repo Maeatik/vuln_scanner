@@ -4,9 +4,14 @@ import (
 	"bytes"
 	"os/exec"
 	"strings"
+
+	"github.com/rs/zerolog/log"
 )
 
 func GetBranches(repoPath string) ([]string, error) {
+	log.Info().Msgf("start get branches")
+	defer log.Info().Msgf("end clone repository")
+
 	cmd := exec.Command("git", "-C", repoPath, "branch", "-r")
 	var out bytes.Buffer
 	cmd.Stdout = &out
