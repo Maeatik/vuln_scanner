@@ -15,6 +15,8 @@ var analyzes []Analyzer = []Analyzer{
 	NewSecretsAnalyzer(),
 	NewSQLInjectionAnalyzer(),
 	NewDepsAnalyzer(),
+	NewSessionHijackAnalyzer(),
+	NewDDoSAnalyzer(),
 }
 
 func AnalyzeRepo(ctx context.Context, repoURL string) ([]v1.Finding, error) {

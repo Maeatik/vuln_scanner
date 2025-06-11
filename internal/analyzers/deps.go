@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"encoding/json"
+	"encoding/xml"
 	"fmt"
 	"io"
 	"os"
@@ -18,7 +19,9 @@ import (
 
 type DepsAnalyzer struct{}
 
-func NewDepsAnalyzer() *DepsAnalyzer { return &DepsAnalyzer{} }
+func NewDepsAnalyzer() Analyzer {
+	return &DepsAnalyzer{}
+}
 
 func (a *DepsAnalyzer) Name() string {
 	return "Проверка уязвимостей зависимостей"
@@ -113,6 +116,16 @@ func gatherDependencies(repoPath string) ([]v1.Dependency, error) {
 		deps = append(deps, ps...)
 	}
 
+	// Java Maven
+	pom := filepath.Join(repoPath, "pom.xml")
+	if exists(pom) {
+		js, err := parseJavaDependencies(pom)
+		if err != nil {
+			return nil, err
+		}
+		deps = append(deps, js...)
+	}
+
 	return deps, nil
 }
 
@@ -179,6 +192,30 @@ func parsePythonRequirements(manifest string) ([]v1.Dependency, error) {
 	}
 	if err := scanner.Err(); err != nil {
 		return nil, err
+	}
+	return deps, nil
+}
+
+func parseJavaDependencies(manifest string) ([]v1.Dependency, error) {
+	data, err := os.ReadFile(manifest)
+	if err != nil {
+		return nil, err
+	}
+	var pom v1.PomModel
+	if err := xml.Unmarshal(data, &pom); err != nil {
+		return nil, fmt.Errorf("failed to parse pom.xml: %w", err)
+	}
+
+	var deps []v1.Dependency
+	for _, d := range pom.Dependencies {
+		// groupId:artifactId
+		name := fmt.Sprintf("%s:%s", d.GroupID, d.ArtifactID)
+		deps = append(deps, v1.Dependency{
+			Name:    name,
+			Version: d.Version,
+			File:    filepath.Base(manifest),
+			Line:    0,
+		})
 	}
 	return deps, nil
 }

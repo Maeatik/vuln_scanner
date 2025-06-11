@@ -6,3 +6,14 @@ type Dependency struct {
 	File    string // путь к манифесту, где найдена (go.mod, requirements.txt)
 	Line    int    // номер строки (для python), для go всегда 0
 }
+
+// XML-структуры для чтения pom.xml
+type PomDependency struct {
+	GroupID    string `xml:"groupId"`
+	ArtifactID string `xml:"artifactId"`
+	Version    string `xml:"version"`
+}
+
+type PomModel struct {
+	Dependencies []PomDependency `xml:"dependencies>dependency"`
+}

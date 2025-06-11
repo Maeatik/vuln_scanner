@@ -13,7 +13,7 @@ import (
 
 type SecretsAnalyzer struct{}
 
-func NewSecretsAnalyzer() *SecretsAnalyzer {
+func NewSecretsAnalyzer() Analyzer {
 	return &SecretsAnalyzer{}
 }
 func (s *SecretsAnalyzer) Name() string {

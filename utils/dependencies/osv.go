@@ -58,10 +58,14 @@ func QueryOSV(pkg, ver string) (OsvResponse, error) {
 }
 
 func detectEcosystem(pkg string) string {
-	if strings.Contains(pkg, "/") {
+	switch {
+	case strings.Contains(pkg, "/"):
 		return "Go"
+	case strings.Contains(pkg, ":"):
+		return "Maven"
+	default:
+		return "PyPI"
 	}
-	return "PyPI"
 }
 
 func MapOSVSeverity(v OSVVulnerability) v1.SeverityLevel {

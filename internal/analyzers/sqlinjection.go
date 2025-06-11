@@ -10,7 +10,7 @@ import (
 
 type SQLInjectionAnalyzer struct{}
 
-func NewSQLInjectionAnalyzer() *SQLInjectionAnalyzer {
+func NewSQLInjectionAnalyzer() Analyzer {
 	return &SQLInjectionAnalyzer{}
 }
 
