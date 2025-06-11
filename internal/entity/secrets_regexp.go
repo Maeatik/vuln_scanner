@@ -6,7 +6,7 @@ var (
 	SecretPatterns = []*regexp.Regexp{RePassword, ReSecret, ReApi, ReToken,
 		ReAuth, ReLongStroke, ReAWSKey, ReGHToken,
 	}
-	
+
 	RePassword   = regexp.MustCompile(`(?i)password\s*[:=]\s*["']?[\w\-!@#$%^&*()_+=]{4,}["']?`)
 	ReSecret     = regexp.MustCompile(`(?i)secret\s*[:=]\s*["']?[\w\-!@#$%^&*()_+=]{4,}["']?`)
 	ReApi        = regexp.MustCompile(`(?i)api[_-]?key\s*[:=]\s*["']?[A-Za-z0-9_\-]{10,}["']?`)
@@ -19,4 +19,20 @@ var (
 	ReConstant      = regexp.MustCompile(`^[A-Z0-9_]+$`)
 	ReFuncSignature = regexp.MustCompile(`^\s*func\s`)    // сигнатуры функций
 	ReMethodCall    = regexp.MustCompile(`\w+\.\w+\s*\(`) // вызовы методов
+
+	// выводящие функции в Go/JS/Python и т.д.
+	OutputPatterns = []*regexp.Regexp{
+		regexp.MustCompile(`\bfmt\.Print(?:ln|f)?\s*\(`),
+		regexp.MustCompile(`\blog\.(?:Print|Printf|Println|Info|Error|Fatal)\s*\(`),
+		regexp.MustCompile(`\bconsole\.log\s*\(`),
+		regexp.MustCompile(`\bprint\(`),                   // Python, псевдопринты
+		regexp.MustCompile(`\bSystem\.out\.println\s*\(`), // Java
+	}
+
+	// переменные, имена которых могут хранить секрет
+	VarNamePatterns = []*regexp.Regexp{
+		regexp.MustCompile(`(?i)\b\w*(password|passwd|pwd)\w*\b`),
+		regexp.MustCompile(`(?i)\b\w*(api[_-]?key|secret|token)\w*\b`),
+		regexp.MustCompile(`(?i)\b\w*(auth|credential)\w*\b`),
+	}
 )

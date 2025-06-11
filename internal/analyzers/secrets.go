@@ -89,8 +89,30 @@ func (s *SecretsAnalyzer) Run(repoName, path, branch string) ([]v1.Finding, erro
 					break
 				}
 			}
-		}
 
+			for _, outPat := range v1.OutputPatterns {
+				if !outPat.MatchString(line) {
+					continue
+				}
+
+				for _, namePat := range v1.VarNamePatterns {
+					if !namePat.MatchString(line) {
+						continue
+					}
+
+					findings = append(findings, v1.Finding{
+						Branch:   branch,
+						File:     file,
+						Line:     lineNum,
+						Content:  strings.TrimSpace(line),
+						Severity: v1.SevHigh,
+					})
+
+					break
+				}
+			}
+
+		}
 		return nil
 	})
 	if err != nil {
