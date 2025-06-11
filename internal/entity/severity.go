@@ -3,7 +3,7 @@ package v1
 type SeverityLevel int
 
 const (
-	SevLow SeverityLevel = iota
+	SevLow SeverityLevel = iota + 1
 	SevMedium
 	SevHigh
 )

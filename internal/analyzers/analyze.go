@@ -14,6 +14,7 @@ import (
 var analyzes []Analyzer = []Analyzer{
 	NewSecretsAnalyzer(),
 	NewSQLInjectionAnalyzer(),
+	NewDepsAnalyzer(),
 }
 
 func AnalyzeRepo(ctx context.Context, repoURL string) ([]v1.Finding, error) {

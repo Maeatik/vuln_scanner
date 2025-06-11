@@ -6,4 +6,13 @@ type Finding struct {
 	Line     int           // номер строки
 	Content  string        // сам текст строки
 	Severity SeverityLevel // приоритет / серьёзность
+	Details  string
+	EPSS     float64
+	Commit   CommitInfo
+}
+
+type CommitInfo struct {
+	CommitName string
+	CommitHash string
+	CommitDate string
 }

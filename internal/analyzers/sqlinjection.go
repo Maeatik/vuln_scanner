@@ -56,7 +56,7 @@ func (s *SQLInjectionAnalyzer) Run(repoName, repoPath, branch string) ([]v1.Find
 						File:     file,
 						Line:     lineNum,
 						Content:  strings.TrimSpace(line),
-						Severity: s.Classify(""),
+						Severity: v1.SevMedium,
 					})
 					// переходим к следующей строке
 					break
@@ -66,8 +66,4 @@ func (s *SQLInjectionAnalyzer) Run(repoName, repoPath, branch string) ([]v1.Find
 		return nil
 	})
 	return findings, err
-}
-
-func (s *SQLInjectionAnalyzer) Classify(match string) v1.SeverityLevel {
-	return v1.SevHigh
 }

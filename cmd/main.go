@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"vuln-scanner/config"
 	"vuln-scanner/internal/telegram"
 
 	"github.com/rs/zerolog"
@@ -9,8 +10,9 @@ import (
 )
 
 func main() {
-	// token := os.Getenv("TELEGRAM_API_TOKEN")
-	token := "7602778440:AAHRSn3-2wHzslSmtBfVKbUp_yNr74-YiRg"
+	cfg := config.InitConfig()
+
+	token := cfg.TelegramTokenAPI
 	if token == "" {
 		log.Fatal().Msg("TELEGRAM_API_TOKEN is not set")
 	}
