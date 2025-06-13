@@ -1,1 +1,4 @@
 name: Vuln-Scanner
+redis:
+  host: localhost
+  port: 6379

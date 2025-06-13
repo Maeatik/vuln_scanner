@@ -12,7 +12,7 @@ import (
 	"github.com/go-telegram/bot/models"
 )
 
-func (a *BotApp) SendFindings(ctx context.Context, tg *bot.Bot, chatID int64, data v1.AnalyzeResponse) error {
+func SendFindings(ctx context.Context, tg *bot.Bot, chatID int64, data v1.AnalyzeResponse) error {
 	tpl, err := template.New("report").
 		Funcs(template.FuncMap{"Format": func(t interface{}, layout string) string {
 			return t.(interface {

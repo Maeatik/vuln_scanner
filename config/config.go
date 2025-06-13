@@ -1,12 +1,15 @@
 package config
 
 import (
+	"vuln-scanner/utils/redis"
+
 	"github.com/go-chassis/go-archaius"
 	"github.com/rs/zerolog/log"
 )
 
 type Config struct {
 	TelegramTokenAPI string
+	Redis            redis.Config
 }
 
 func InitConfig() Config {
@@ -24,7 +27,11 @@ func InitConfig() Config {
 		log.Fatal().Msgf("error initializing configs %w", err)
 	}
 
+	red := redis.Config{}
+	red.InitConfig()
+
 	return Config{
 		TelegramTokenAPI: archaius.GetString("telegram.token", ""),
+		Redis:            red,
 	}
 }

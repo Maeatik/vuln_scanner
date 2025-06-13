@@ -1,6 +1,18 @@
 package v1
 
-import "time"
+import (
+	"encoding/json"
+	"time"
+)
+
+type Job struct {
+	Text   string `json:"text"`
+	ChatID int64  `json:"chat_id"`
+}
+
+func (r Job) MarshalBinary() ([]byte, error) {
+	return json.Marshal(r)
+}
 
 type AnalyzeResponse struct {
 	RepositoryName string
