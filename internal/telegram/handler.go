@@ -33,7 +33,7 @@ func (a *BotApp) handleRepoLink(ctx context.Context, b *bot.Bot, update *models.
 		Text:   "Ссылка получена. Начинаю анализ...",
 	})
 
-	resp, err := analyzers.AnalyzeRepo(ctx, text)
+	resp, err := analyzers.AnalyzeRepo(ctx, text, chatID)
 	if err != nil {
 		log.Error().Msgf("analyze reporsitory error: %v", err)
 		b.SendMessage(ctx, &bot.SendMessageParams{

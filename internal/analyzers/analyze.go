@@ -10,6 +10,8 @@ import (
 	v1 "vuln-scanner/internal/entity"
 	"vuln-scanner/internal/gitutil"
 	utils "vuln-scanner/utils/util"
+
+	"github.com/rs/zerolog/log"
 )
 
 type job struct {
@@ -27,25 +29,23 @@ var analyzes = []Analyzer{
 	NewDDoSAnalyzer(),
 }
 
-func AnalyzeRepo(ctx context.Context, repoURL string) (v1.AnalyzeResponse, error) {
-	// Получаем список веток единожды
+func AnalyzeRepo(ctx context.Context, repoURL string, chatId int64) (v1.AnalyzeResponse, error) {
 	tmpDir, err := gitutil.Clone(repoURL)
 	if err != nil {
-		return v1.AnalyzeResponse{}, fmt.Errorf("не удалось клонировать репозиторий для списка веток: %v", err)
+		log.Error().Msgf("[%d] cant clone repo: %v", chatId, err)
+		return v1.AnalyzeResponse{}, fmt.Errorf("Не удалось клонировать репозиторий для списка веток")
 	}
-	// удалим этот временный клон после получения веток
 	defer os.RemoveAll(tmpDir)
 
 	branches, err := gitutil.GetBranches(tmpDir)
 	if err != nil {
-		return v1.AnalyzeResponse{}, fmt.Errorf("не удалось получить список веток: %w", err)
+		log.Error().Msgf("[%d] cant get branches: %v", chatId, err)
+		return v1.AnalyzeResponse{}, fmt.Errorf("Не удалось получить список веток")
 	}
 
-	// Каналы для заданий и результатов
 	jobs := make(chan job)
 	results := make(chan []v1.Finding)
 
-	// Пул воркеров
 	numWorkers := runtime.NumCPU()
 	var wg sync.WaitGroup
 	for i := 0; i < numWorkers; i++ {
@@ -59,27 +59,25 @@ func AnalyzeRepo(ctx context.Context, repoURL string) (v1.AnalyzeResponse, error
 				default:
 				}
 
-				// Для каждой задачи заново клонируем репозиторий
 				dir, err := gitutil.Clone(j.repoURL)
 				if err != nil {
-					// неудача клона — пропускаем
+					log.Error().Msgf("[%d] cant clone repo while analyze: %v", chatId, err)
 					continue
 				}
-				// cleanup
 				defer os.RemoveAll(dir)
 
-				// переключаем ветку
 				if err := gitutil.CheckoutBranch(dir, j.branch); err != nil {
+					log.Error().Msgf("[%d] cant checkout branch: %v", chatId, err)
 					continue
 				}
 
-				// запускаем анализатор
+				log.Info().Msgf("[%d] start analyze %v", chatId, j.analyzer.Name())
 				finds, err := j.analyzer.Run(utils.ExtractRepoName(j.repoURL), dir, j.branch)
 				if err != nil {
+					log.Error().Msgf("[%d] error while analyze %v: %v", chatId, j.analyzer.Name(), err)
 					continue
 				}
 
-				// отправляем найденное
 				select {
 				case results <- finds:
 				case <-ctx.Done():
@@ -89,7 +87,6 @@ func AnalyzeRepo(ctx context.Context, repoURL string) (v1.AnalyzeResponse, error
 		}()
 	}
 
-	// Диспетчер: кладёт в канал все (ветка, анализатор)
 	go func() {
 		for _, branch := range branches {
 			for _, analyzer := range analyzes {
@@ -99,13 +96,11 @@ func AnalyzeRepo(ctx context.Context, repoURL string) (v1.AnalyzeResponse, error
 		close(jobs)
 	}()
 
-	// Закроем results после завершения всех воркеров
 	go func() {
 		wg.Wait()
 		close(results)
 	}()
 
-	// Собираем всё из results
 	var allFindings []v1.Finding
 	for f := range results {
 		allFindings = append(allFindings, f...)

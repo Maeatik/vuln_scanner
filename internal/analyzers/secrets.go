@@ -53,12 +53,10 @@ func (s *SecretsAnalyzer) Run(repoName, path, branch string) ([]v1.Finding, erro
 				continue
 			}
 
-			// 2) Пропустить сигнатуры функций
 			if v1.ReFuncSignature.MatchString(line) {
 				continue
 			}
 
-			// 3) Пропустить простые вызовы методов/функций
 			if v1.ReMethodCall.MatchString(line) {
 				continue
 			}
@@ -85,7 +83,6 @@ func (s *SecretsAnalyzer) Run(repoName, path, branch string) ([]v1.Finding, erro
 						Severity: sev,
 					})
 
-					// после первого валидного совпадения в строке — выходим к следующей строке
 					break
 				}
 			}

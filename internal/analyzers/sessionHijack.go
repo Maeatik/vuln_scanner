@@ -92,7 +92,6 @@ func GoCheckSession(allLines []string, line string, lineNum int) bool {
 	ok := false
 
 	if v1.SetCookiePattern.MatchString(line) {
-		// проверяем следующие 10 строк на HttpOnly:true
 		for j := lineNum; j < lineNum+10 && j < len(allLines); j++ {
 			if v1.HttpOnlyPattern.MatchString(allLines[j]) {
 				ok = true

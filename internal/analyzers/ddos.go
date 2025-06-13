@@ -55,7 +55,6 @@ func (s *DDoSAnalyzer) Run(repoName, repoPath, branch string) ([]v1.Finding, err
 			}
 			// 2) &http.Server{ ... } без таймаутов
 			if v1.ServerPattern.MatchString(line) {
-				// проверяем следующие N строк
 				hasTimeout := false
 				for j := i; j < i+15 && j < len(lines); j++ {
 					if v1.TimeoutPattern.MatchString(lines[j]) || v1.PyDDOSPattern.MatchString(lines[j]) || v1.JavaDDOSPattern.MatchString(lines[j]) {

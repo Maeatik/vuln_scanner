@@ -26,7 +26,7 @@ type OSVVulnerability struct {
 	Summary  string        `json:"summary"`
 	Details  string        `json:"details"`
 	Severity []OSVSeverity `json:"severity,omitempty"`
-	Aliases  []string      `json:"aliases"` // <— добавили
+	Aliases  []string      `json:"aliases"`
 }
 
 type OsvResponse struct {
@@ -72,7 +72,6 @@ func MapOSVSeverity(v OSVVulnerability) v1.SeverityLevel {
 	if len(v.Severity) == 0 {
 		return v1.SevMedium
 	}
-	// Берём первый элемент (обычно единственный)
 	score := parseCVSSScore(v.Severity[0].Score)
 	switch {
 	case score >= 7.0:
@@ -85,7 +84,6 @@ func MapOSVSeverity(v OSVVulnerability) v1.SeverityLevel {
 }
 
 func parseCVSSScore(vec string) float64 {
-	// vec имеет формат "CVSS:<число>/<остальное>"
 	parts := strings.SplitN(vec, ":", 2)
 	if len(parts) != 2 {
 		return 0

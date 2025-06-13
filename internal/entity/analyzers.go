@@ -10,11 +10,11 @@ type AnalyzeResponse struct {
 }
 
 type Finding struct {
-	Branch   string        // имя ветки
-	File     string        // путь до файла
-	Line     int           // номер строки
-	Content  string        // сам текст строки
-	Severity SeverityLevel // приоритет / серьёзность
+	Branch   string
+	File     string
+	Line     int
+	Content  string
+	Severity SeverityLevel
 	Details  string
 	EPSS     float64
 }

@@ -25,7 +25,6 @@ func GetBranches(repoPath string) ([]string, error) {
 		if line == "" || strings.Contains(line, "->") {
 			continue
 		}
-		// Пример: origin/dev → dev
 		parts := strings.SplitN(line, "/", 2)
 		if len(parts) == 2 {
 			branches = append(branches, parts[1])
@@ -34,7 +33,6 @@ func GetBranches(repoPath string) ([]string, error) {
 	return branches, nil
 }
 
-// CheckoutBranch переключается на указанную ветку
 func CheckoutBranch(repoPath, branch string) error {
 	cmd := exec.Command("git", "-C", repoPath, "checkout", "--quiet", branch)
 	return cmd.Run()

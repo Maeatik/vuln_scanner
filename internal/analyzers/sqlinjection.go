@@ -29,7 +29,7 @@ func (s *SQLInjectionAnalyzer) Run(repoName, repoPath, branch string) ([]v1.Find
 		ext := strings.ToLower(filepath.Ext(file))
 		patterns, ok := v1.SqlPatternsByExt[ext]
 		if !ok {
-			return nil // этот язык не поддерживаем
+			return nil
 		}
 
 		if isTestOrMock(file) {
@@ -58,7 +58,6 @@ func (s *SQLInjectionAnalyzer) Run(repoName, repoPath, branch string) ([]v1.Find
 						Content:  strings.TrimSpace(line),
 						Severity: v1.SevMedium,
 					})
-					// переходим к следующей строке
 					break
 				}
 			}

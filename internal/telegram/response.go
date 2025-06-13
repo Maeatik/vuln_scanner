@@ -13,10 +13,8 @@ import (
 )
 
 func (a *BotApp) SendFindings(ctx context.Context, tg *bot.Bot, chatID int64, data v1.AnalyzeResponse) error {
-	// Парсим шаблон и добавляем возможность вызова метода Format на ScanDate
 	tpl, err := template.New("report").
 		Funcs(template.FuncMap{"Format": func(t interface{}, layout string) string {
-			// t — ожидается time.Time
 			return t.(interface {
 				Format(string) string
 			}).Format(layout)
@@ -26,7 +24,6 @@ func (a *BotApp) SendFindings(ctx context.Context, tg *bot.Bot, chatID int64, da
 		return err
 	}
 
-	// Рендерим весь AnalyzeResponse, чтобы в шаблоне были доступны .RepositoryName, .AuthorName, .ScanDate и .Findings
 	var buf bytes.Buffer
 	if err := tpl.Execute(&buf, data); err != nil {
 		return err

@@ -36,33 +36,27 @@ func (a *DepsAnalyzer) Run(repoName, repoPath, branch string) ([]v1.Finding, err
 		return nil, err
 	}
 
-	// общий слайс и мьютекс для результатов
 	var (
 		mu       sync.Mutex
 		findings []v1.Finding
 	)
 
-	// errgroup с контекстом для отмены в случае ошибки
 	eg, _ := errgroup.WithContext(context.Background())
 
-	// семафор, чтобы не делать сотни одновременных запросов
 	const maxConcurrent = 5
 	sem := make(chan struct{}, maxConcurrent)
 
 	for _, dep := range deps {
-		dep := dep // захват локальной копии
+		dep := dep
 		eg.Go(func() error {
-			// запрос в OSV
-			sem <- struct{}{} // захват семафора
+			sem <- struct{}{}
 			vuls, err := dependencies.QueryOSV(dep.Name, dep.Version)
-			<-sem // освобождение семафора
+			<-sem
 			if err != nil {
 				return fmt.Errorf("OSV query %s@%s: %w", dep.Name, dep.Version, err)
 			}
 
-			// для каждого найденного уязвимого совпадения опрашиваем EPSS и формируем Finding
 			for _, v := range vuls.Vulns {
-				// выбрать первую CVE-алиасу
 				var cve string
 				for _, al := range v.Aliases {
 					if strings.HasPrefix(al, "CVE-") {
@@ -71,11 +65,8 @@ func (a *DepsAnalyzer) Run(repoName, repoPath, branch string) ([]v1.Finding, err
 					}
 				}
 
-				// можно сделать ещё один ограниченный параллелизм для FetchEPSS,
-				// но здесь оставим последовательным
 				epssScore, err := dependencies.FetchEPSS(cve)
 				if err != nil {
-					// не фатально — логируем и идём дальше
 					log.Info().Msgf("failed to get EPSS for %s: %v", cve, err)
 				}
 
@@ -101,7 +92,6 @@ func (a *DepsAnalyzer) Run(repoName, repoPath, branch string) ([]v1.Finding, err
 		})
 	}
 
-	// ждём завершения всех горутин
 	if err := eg.Wait(); err != nil {
 		return nil, err
 	}
@@ -241,7 +231,6 @@ func parseJavaDependencies(manifest string) ([]v1.Dependency, error) {
 
 	var deps []v1.Dependency
 	for _, d := range pom.Dependencies {
-		// groupId:artifactId
 		name := fmt.Sprintf("%s:%s", d.GroupID, d.ArtifactID)
 		deps = append(deps, v1.Dependency{
 			Name:    name,
